@@ -1,0 +1,193 @@
+version: 2
+jobs:
+  pr_check:
+    docker:
+      - image: node:8.17.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "webapp/package.json" }}
+            - v1-dependencies-
+      - run: |
+            cd webapp
+            ls -al
+            pwd
+            npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "webapp/package.json" }}
+      - run: 
+          name: "Test"
+          command: |
+            pwd
+            cd webapp
+            ls -al
+            pwd
+            npx jest
+            echo 'Done'
+      - run:
+          name: install pip
+          command: |
+            apt-get update || sudo apt-get update
+            apt-get install python3 -y
+            python3 --version
+            apt install python3-pip -y
+            pip3 --version
+            apt update && apt install -y zip unzip
+      - run: 
+          name: "Zip Artifacts"
+          command: |
+           echo "Hello the current build number is ${CIRCLE_BUILD_NUM}"
+            pwd
+            ls -al
+            mkdir -p codedeploy_artifact
+            pwd 
+            cp codedeploy/*.sh .
+            cp webapp/cloudwatch-config.json .
+            zip -r csye6225-webapp-${CIRCLE_BUILD_NUM}.zip webapp *.sh *.yml *.json
+            ls -al
+            mv csye6225-webapp-${CIRCLE_BUILD_NUM}.zip codedeploy_artifact/
+            ls -al
+            pwd
+            cd codedeploy_artifact
+            ls -al
+            pwd
+            cd ..
+            pwd
+            ls -al
+      - run:
+          name: install aws cli
+          command: |
+            pip3 install awscli
+            mkdir ~/.aws 
+            cd ~/.aws
+            echo -e "[default]\naws_access_key_id=$aws_access_key\naws_secret_access_key=$aws_secret_key\n" > ~/.aws/credentials
+      - run:
+          name: Upload Artifact to S3
+          command: |
+            cd codedeploy_artifact
+            aws s3 cp csye6225-webapp-${CIRCLE_BUILD_NUM}.zip s3://${bucketName}
+      - run:
+          name: Call codeploy to deploy application
+          command: |
+            aws deploy register-application-revision --region ${AWS_REGION} --application-name csye6225-webapp \
+            --s3-location bucket=${bucketName},key=csye6225-webapp-${CIRCLE_BUILD_NUM}.zip,bundleType=zip
+            deploymentId=$(aws deploy create-deployment --region ${AWS_REGION} \
+            --application-name csye6225-webapp \
+            --deployment-config-name CodeDeployDefault.AllAtOnce \
+            --deployment-group-name csye6225-webapp-deployment \
+            --s3-location bucket=${bucketName},bundleType=zip,key=csye6225-webapp-${CIRCLE_BUILD_NUM}.zip \
+            --auto-rollback-configuration enabled=true,events=DEPLOYMENT_FAILURE,DEPLOYMENT_STOP_ON_ALARM,DEPLOYMENT_STOP_ON_REQUEST)
+            echo "$deploymentId"
+      
+  build:
+    docker:
+      - image: node:8.17.0
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "webapp/package.json" }}
+            - v1-dependencies-
+      - run: |
+            cd webapp
+            ls -al
+            pwd
+            npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "webapp/package.json" }}
+      - run: 
+          name: "Test"
+          command: |
+            pwd
+            cd webapp
+            ls -al
+            pwd
+            npx jest
+            echo 'Done'
+      - run: |
+            cd webapp
+            ls -al
+            pwd
+            npm install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "webapp/package.json" }}
+      - run:
+          name: install pip
+          command: |
+            apt-get update || sudo apt-get update
+            apt-get install python3 -y
+            python3 --version
+            apt install python3-pip -y
+            pip3 --version
+            apt update && apt install -y zip unzip
+      - run: 
+          name: "Zip Artifacts"
+          command: |
+           echo "Hello the current build number is ${CIRCLE_BUILD_NUM}"
+            pwd
+            ls -al
+            mkdir -p codedeploy_artifact
+            pwd 
+            cp codedeploy/*.sh .
+            cp webapp/cloudwatch-config.json .
+            zip -r csye6225-webapp-${CIRCLE_BUILD_NUM}.zip webapp *.sh *.yml *.json
+            ls -al
+            mv csye6225-webapp-${CIRCLE_BUILD_NUM}.zip codedeploy_artifact/
+            ls -al
+            pwd
+            cd codedeploy_artifact
+            ls -al
+            pwd
+            cd ..
+            pwd
+            ls -al
+      - run:
+          name: install aws cli
+          command: |
+            pip3 install awscli
+            mkdir ~/.aws 
+            cd ~/.aws
+            echo -e "[default]\naws_access_key_id=$aws_access_key\naws_secret_access_key=$aws_secret_key\n" > ~/.aws/credentials
+      - run:
+          name: Upload Artifact to S3
+          command: |
+            cd codedeploy_artifact
+            aws s3 cp csye6225-webapp-${CIRCLE_BUILD_NUM}.zip s3://${bucketName}
+      - run:
+          name: Call codeploy to deploy application
+          command: |
+            aws deploy register-application-revision --region ${AWS_REGION} --application-name csye6225-webapp \
+            --s3-location bucket=${bucketName},key=csye6225-webapp-${CIRCLE_BUILD_NUM}.zip,bundleType=zip
+            deploymentId=$(aws deploy create-deployment --region ${AWS_REGION} \
+            --application-name csye6225-webapp \
+            --deployment-config-name CodeDeployDefault.AllAtOnce \
+            --deployment-group-name csye6225-webapp-deployment \
+            --s3-location bucket=${bucketName},bundleType=zip,key=csye6225-webapp-${CIRCLE_BUILD_NUM}.zip \
+            --auto-rollback-configuration enabled=true,events=DEPLOYMENT_FAILURE,DEPLOYMENT_STOP_ON_ALARM,DEPLOYMENT_STOP_ON_REQUEST)
+            echo "$deploymentId"
+      
+workflows:
+  version: 2
+  pr_check_workflow:
+    jobs:
+      - pr_check
+  build_deploy:
+    jobs:
+      - build:
+          filters:
+            branches:
+              only: master
+          
+
+      
+      
+  
+    
+      
